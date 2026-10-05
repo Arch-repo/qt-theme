@@ -15,5 +15,34 @@
     "card": 18,
     "panel": 28,
     "pill": 999
+  },
+  "colour": {
+    "error": "@red",
+    "warning": "@yellow",
+    "success": "@green",
+    "ui-panel": "alpha(mix(shade(@background, 0.75), @accent, 0.14), {{material.opacity}})",
+    "ui-surface": "alpha(@foreground, 0.065)",
+    "ui-surface-hover": "alpha(@foreground, 0.105)",
+    "ui-surface-selected": "alpha(@accent, 0.18)",
+    "ui-border": "alpha(@foreground, 0.12)",
+    "ui-border-glass": "alpha(mix(@foreground, @accent, 0.20), 0.21)",
+    "ui-secondary": "alpha(@foreground, 0.74)",
+    "ui-tertiary": "alpha(@foreground, 0.60)",
+    "ui-glass-highlight": "alpha(mix(@foreground, @accent, 0.30), 0.10)",
+    "ui-glass-tint": "alpha(@accent, 0.055)"
+  },
+  "control": {
+    "action_icon": 16,
+    "row_icon": 20,
+    "meter_height": 6,
+    "thumb_size": 18,
+    "row_padding_x": 16,
+    "row_padding_y": 13,
+    "action_min_height": 26,
+    "action_padding_x": 12,
+    "action_padding_y": 6,
+    "symbol_padding": 8,
+    "status_dot": 6,
+    "glyph_min_size": 40
   }
 }

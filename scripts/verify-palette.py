@@ -4,11 +4,14 @@ from pathlib import Path
 import configparser
 import importlib.util
 import json
+import sys
+import re
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'palette'))
 spec = importlib.util.spec_from_file_location('palette', ROOT / 'palette/render.py')
 renderer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(renderer)
@@ -46,6 +49,30 @@ class Palette(unittest.TestCase):
             parser.read(output / 'qt6.conf')
             self.assertEqual(len(parser['ColorScheme']['active_colors'].split(',')), 21)
             self.assertNotIn('Palette\\Accent=', (output / 'qtquickcontrols2.conf').read_text())
+
+    def test_control_style_and_owned_assets(self):
+        with tempfile.TemporaryDirectory() as folder:
+            output = Path(folder)
+            renderer.render(PALETTE, MATERIAL, output)
+            rendered_colors = set(re.findall(r'#[0-9a-fA-F]{6}(?![0-9a-fA-F])', (output / 'anto426.svg').read_text()))
+            self.assertFalse(rendered_colors - set(PALETTE.values()))
+            self.assertNotIn('#58acff', rendered_colors)
+            qss = (output / 'qt6.qss').read_text()
+            self.assertIn('border-radius: 12px', qss)
+            for control in ('QComboBox::drop-down', 'QSlider::handle', 'QMenu::indicator', 'QAbstractSpinBox::up-button', 'QTabBar::tab', 'QHeaderView::section'):
+                self.assertIn(control, qss)
+            self.assertEqual((output / 'qt5.qss').read_text(), qss)
+            self.assertFalse(re.findall(r'@(?!ANTO_QT_ASSETS)[A-Za-z]+@', qss))
+            for source in (output / 'assets').glob('*.svg'):
+                ET.parse(source)
+            module = output / 'qml/Anto426'
+            self.assertGreaterEqual(len(list(module.glob('*.qml'))), 47)
+            material = (module / 'Material.qml').read_text()
+            self.assertIn('controlRadius: 12', material)
+            self.assertIn('readonly property color accent: "' + PALETTE['accent'] + '"', material)
+            for name in ('Button', 'TextField', 'Menu', 'Dialog', 'ScrollView', 'RangeSlider'):
+                self.assertIn('T.' + name + ' {', (module / (name + '.qml')).read_text())
+            self.assertIn('Style=Anto426', (output / 'qtquickcontrols2.conf').read_text())
 
     def test_bad_input_is_rejected(self):
         with tempfile.TemporaryDirectory() as folder:

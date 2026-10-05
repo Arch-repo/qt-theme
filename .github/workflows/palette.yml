@@ -5,4 +5,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - run: python3 scripts/verify-palette.py
+      - run: |
+          python3 scripts/build-quick.py
+          git diff --exit-code -- palette/quick.tar.gz
+          python3 scripts/verify-palette.py

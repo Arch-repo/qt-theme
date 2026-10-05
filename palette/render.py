@@ -8,8 +8,65 @@ import ctypes.util
 import io
 import json
 import re
+import tarfile
+import colorsys
 
 ROOT = Path(__file__).resolve().parent
+
+
+def material_values(palette, material):
+    """Evaluate the shell's small color-token grammar into QML color values."""
+    def color(expression):
+        expression = expression.strip()
+        if expression.startswith('@'):
+            text = palette[expression[1:].replace('-', '_')]
+            return tuple(int(text[i:i + 2], 16) / 255 for i in (1, 3, 5)) + (1.,)
+        function, body = expression.split('(', 1)
+        body = body[:-1]
+        arguments, start, depth = [], 0, 0
+        for index, char in enumerate(body):
+            depth += (char == '(') - (char == ')')
+            if char == ',' and depth == 0:
+                arguments.append(body[start:index]); start = index + 1
+        arguments.append(body[start:])
+        first = color(arguments[0]); amount = float(arguments[-1])
+        if function == 'alpha':
+            return first[:3] + (first[3] * amount,)
+        if function == 'mix':
+            second = color(arguments[1])
+            return tuple(a * (1 - amount) + b * amount for a, b in zip(first, second))
+        if function == 'shade':
+            hue, light, saturation = colorsys.rgb_to_hls(*first[:3])
+            return colorsys.hls_to_rgb(hue, min(1, light * amount), min(1, saturation * amount)) + (first[3],)
+        raise ValueError('Unsupported color token: ' + function)
+    definitions = {'surface': 'ui-surface', 'hoverSurface': 'ui-surface-hover',
+                   'selectedSurface': 'ui-surface-selected', 'border': 'ui-border', 'panel': 'ui-panel'}
+    tokens = material['colour']
+    values = {name: palette.get(role, palette['surface']) for name, role in dict(accent='accent', foreground='foreground', muted='muted', selectedForeground='selected_fg', popover='popover').items()}
+    for name, role in definitions.items():
+        expression = tokens[role].replace('{{material.opacity}}', str(material['material']['opacity']))
+        values[name] = color(expression)
+    measures = dict(controlRadius=material['radius']['control'], cardRadius=material['radius']['card'],
+                    padding=material['spacing']['md'], spacing=material['spacing']['sm'],
+                    meterHeight=material['control']['meter_height'], thumbSize=material['control']['thumb_size'])
+    for name, value in measures.items():
+        if type(value) not in (int, float) or not 0 < value <= 128:
+            raise ValueError('Invalid shared control measure')
+        values[name] = value
+    return values
+
+
+def quick_material(palette, material):
+    lines = ['pragma Singleton', 'import QtQuick 2.15', 'QtObject {']
+    for name, value in material_values(palette, material).items():
+        if isinstance(value, str):
+            lines.append(f' readonly property color {name}: "{value}"')
+        elif isinstance(value, tuple):
+            rgba = ','.join(f'{v:.6g}' for v in value)
+            lines.append(f' readonly property color {name}: Qt.rgba({rgba})')
+        else:
+            lines.append(f' readonly property real {name}: {value}')
+    return '\n'.join(lines + ['}']) + '\n'
 
 
 def extended_qt6():
@@ -53,11 +110,21 @@ def render(palette, material, output, qt6_extended=True):
     radius = material['radius']['control']
     if type(radius) not in (int, float) or not 0 < radius <= 64:
         raise ValueError('Invalid control radius')
+    qml_material = quick_material(palette, material)
     output.mkdir(parents=True, exist_ok=True)
-    original = {'404552': 'surface', '383c4a': 'base', '4b5162': 'surface',
-                '5294e2': 'accent', '0582ff': 'accent', 'b74aff': 'border',
-                'd3dae3': 'foreground', 'ffffff': 'foreground', '151515': 'border',
-                '000000': 'background', '5796e8': 'accent'}
+    # Every fixed upstream RGB role is mapped once; state opacity stays in SVG.
+    original = {}
+    for role, source in {
+        'accent': '5294e2 0582ff 5796e8 58acff 4693e6 3176bf',
+        'foreground': 'd3dae3 ffffff d7d7d7 b4b4b4 d2d2d2 c3c3c3',
+        'muted': '92959d 5a5a5a a0a0a0 787878 767b87 7b7b7b 969696 acb1bc',
+        'background': '000000 111217 22252e 262933 2d303b 2d323d 2f343f 1e1e1e 222224 141414 22242e 2b2e39',
+        'base': '383c4a 343844 3c404e 363c48 323542 31353f',
+        'surface': '404552 4b5162 474d5d 505666 4d5367 444a58 444448 474d5b 5a616e 505050',
+        'border': '151515 b74aff',
+        'red': 'f04a50',
+    }.items():
+        original.update({key: role for key in source.split()})
     svg = re.sub(r'#[0-9a-fA-F]{6}(?![0-9a-fA-F])',
                  lambda match: palette.get(original.get(match[0][1:].lower(), ''), match[0]),
                  (ROOT / 'base.svg').read_text())
@@ -94,15 +161,22 @@ def render(palette, material, output, qt6_extended=True):
     stream = io.StringIO()
     config.write(stream, space_around_delimiters=False)
     (output / 'anto426.kvconfig').write_text(stream.getvalue())
-    qss = f'''/* Owned palette roles; native widget geometry stays in Kvantum. */
-QToolTip {{ background-color: {palette['surface']}; color: {palette['foreground']}; border: 1px solid {palette['border']}; border-radius: {radius}px; }}
-QMenu::item:selected {{ background-color: {palette['accent']}; color: {palette['selected_fg']}; }}
-'''
+    from widgets import render_widgets
+    qss = render_widgets(palette, material_values(palette, material), output)
     for version in (5, 6):
         (output / f'qt{version}.conf').write_text(scheme(palette, version, opacity, qt6_extended))
         (output / f'qt{version}.qss').write_text(qss)
-    # Qt Quick has its own style palette; configure documented per-style roles
-    # without forcing a style or replacing any QML controls.
+    # Own the visual style as well as the palette. Native Templates retain
+    # keyboard, pointer, accessibility and data behavior; Fusion fills new types.
+    with tarfile.open(ROOT / 'quick.tar.gz') as archive:
+        for item in archive:
+            relative = Path(item.name)
+            if not item.isfile() or relative.is_absolute() or '..' in relative.parts or relative.parts[0] != 'Anto426':
+                raise ValueError('Invalid Qt Quick style archive entry')
+            target = output / 'qml' / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(archive.extractfile(item).read())
+    (output / 'qml/Anto426/Material.qml').write_text(qml_material)
     quick_roles = {'WindowText': 'foreground', 'Text': 'foreground', 'ButtonText': 'foreground',
                    'BrightText': 'foreground', 'Button': 'surface', 'Window': 'background',
                    'Base': 'base', 'AlternateBase': 'base_alt', 'Highlight': 'accent',
@@ -110,7 +184,7 @@ QMenu::item:selected {{ background-color: {palette['accent']}; color: {palette['
                    'ToolTipBase': 'surface', 'ToolTipText': 'foreground', 'PlaceholderText': 'muted',
                    'Accent': 'accent', 'Light': 'select', 'Midlight': 'border',
                    'Dark': 'background', 'Mid': 'border', 'Shadow': 'background'}
-    sections = []
+    sections = ['[Controls]\nStyle=Anto426\nFallbackStyle=Fusion']
     for style in ('Basic', 'Fusion', 'Imagine', 'Material', 'Universal', 'FluentWinUI3'):
         lines = ['[' + style + ']']
         for name, role in quick_roles.items():
