@@ -6,7 +6,7 @@ T.TabBar {
  implicitWidth: implicitContentWidth + leftPadding + rightPadding
  implicitHeight: implicitContentHeight + topPadding + bottomPadding
  padding: Material.spacing; spacing: Material.spacing
- 
+
  contentItem: ListView { model: control.contentModel; spacing: control.spacing; orientation: ListView.Horizontal; boundsBehavior: Flickable.StopAtBounds; implicitWidth: contentWidth; implicitHeight: 40; clip: true }
  background: Surface { flat: true }
 }

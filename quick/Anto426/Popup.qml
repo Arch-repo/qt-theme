@@ -7,5 +7,5 @@ T.Popup {
  implicitHeight: Math.max(implicitBackgroundHeight, implicitContentHeight + topPadding + bottomPadding)
  padding: Material.padding; margins: Material.padding
  background: Surface { radius: Material.cardRadius; color: Material.popover }
- 
+
 }

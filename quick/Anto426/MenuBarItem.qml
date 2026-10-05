@@ -12,6 +12,6 @@ T.MenuBarItem {
   pressed: control.down; hovered: control.hovered; focused: control.visualFocus
   flat: true
   color: control.checked && !control.highlighted ? Material.selectedSurface : highlighted ? Material.accent : pressed ? Material.selectedSurface : hovered ? Material.hoverSurface : flat ? "transparent" : Material.surface
-  
+
  }
 }

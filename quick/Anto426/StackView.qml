@@ -4,5 +4,5 @@ import QtQuick.Templates 2.15 as T
 T.StackView {
  id: control
  implicitWidth: implicitContentWidth; implicitHeight: implicitContentHeight
- 
+
 }

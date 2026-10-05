@@ -12,6 +12,6 @@ T.TabButton {
   pressed: control.down; hovered: control.hovered; focused: control.visualFocus
   flat: false
   color: control.checked ? Material.selectedSurface : highlighted ? Material.accent : pressed ? Material.selectedSurface : hovered ? Material.hoverSurface : flat ? "transparent" : Material.surface
-  
+
  }
 }
